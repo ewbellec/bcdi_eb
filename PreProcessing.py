@@ -17,9 +17,12 @@ my_cmap = MIR_Colormap()
 def check_detector_saturation(data, scan):
     maxi = np.nanmax(data)
     print('maximum counts : ', maxi)
-    if scan.detector == 'mpx1x4':
-        if maxi>150000:
-            print(f'{scan.detector} detector in non-linear dynamic range')
+    if scan.data_type=='PETRA':
+        print('I don\'t remember the detector saturation level at PETRA...')
+    else:
+        if scan.detector == 'mpx1x4':
+            if maxi>150000:
+                print(f'{scan.detector} detector in non-linear dynamic range')
     return
 
 ###########################################################################################################################################
@@ -29,6 +32,7 @@ def check_detector_saturation(data, scan):
 def create_Q_array(scan, 
                    roi=None,
                    det_calib=None,
+                   energy=None,
                    switch_x_y_direct_beam_position=False,
                    chi=0, eta=None, phi=None,
                    cxi_convention=False,
@@ -57,10 +61,18 @@ def create_Q_array(scan,
     if phi is None:
         phi = scan.getMotorPosition('phi')
         
-    if 'spec' in str(scan.__class__):
+    if 'spec' in str(scan.__class__) or scan.data_type=='PETRA':
         delta = scan.getMotorPosition('del')
     else:
         delta = scan.getMotorPosition('delta')
+        
+    if scan.data_type=='PETRA':
+        nu = -scan.getMotorPosition('gam')
+    else:
+        nu = scan.getMotorPosition('nu')
+        
+    if energy is None:
+        energy = scan.getEnergy()
         
     beam_center_y = det_calib['beam_center_y']
     beam_center_x = det_calib['beam_center_x'] 
@@ -70,7 +82,7 @@ def create_Q_array(scan,
         
     qconv = xu.experiment.QConversion(['y-','z-','x+'],['z-','y-'],[1,0,0]) # 2S+2D goniometer (simplified ID01 goniometer, sample: eta, phi detector nu,del
     # convention for coordinate system: x downstream; z upwards; y to the "outside" (righthanded)
-    hxrd = xu.HXRD([1,0,0],[0,0,1], en=scan.getEnergy(), qconv=qconv)
+    hxrd = xu.HXRD([1,0,0],[0,0,1], en=energy, qconv=qconv)
 
     hxrd.Ang2Q.init_area('z-', 'y+', 
                      cch1=beam_center_y-roi[2], cch2=beam_center_x-roi[4],
@@ -83,7 +95,7 @@ def create_Q_array(scan,
     qx,qy,qz = hxrd.Ang2Q.area(eta,
                                phi,
                                chi,
-                               scan.getMotorPosition('nu'),
+                               nu,
                                delta)
     
     # Apply the ROI along the rocking curve angle
@@ -101,9 +113,9 @@ def create_Q_array(scan,
         print('eta : {}'.format(eta))
         print('chi : {}'.format(chi))
         print('delta : {}'.format(delta))
-        print('nu : {}'.format(scan.getMotorPosition('nu')))
+        print('nu : {}'.format(nu))
 
-        print('\nenergy (eV) :', scan.getEnergy())
+        print('\nenergy (eV) :', energy)
         print('detector_distance :{} m'.format(det_calib['distance']))
         print('beam_center_x :{} '.format(beam_center_x))
         print('beam_center_y :{} '.format(beam_center_y))
@@ -393,8 +405,12 @@ def save_preprocessed_data(scan, data, qx,qy,qz,
         path_save = 'preprocessed_data_{}/'.format(scan.sample) 
         check_path_create(path_save)
 
-    dataset_name = scan.h5file.split('/')[-2]
-    scan_nb = int(scan.scan_string.split('.')[0])
+    if scan.data_type=='PETRA':
+        dataset_name = 'dummy'
+        scan_nb=scan.scan_nb
+    else:
+        dataset_name = scan.h5file.split('/')[-2]
+        scan_nb = int(scan.scan_string.split('.')[0])
     
     if orthogonalization:
         ortho_string = '_ortho'
@@ -488,11 +504,17 @@ def correct_flatfield(data, roi,
         h5f = h5py.File(flatfield_file, 'r')
         flatfield = h5f['ff/ff'][()]
     elif flatfield_file.split('.')[-1] == 'npz':
-        flatfield = np.load(flatfield_file)['flatfield']
+        try:
+            flatfield = np.load(flatfield_file)['flatfield']
+        except:
+            flatfield = np.load(flatfield_file)['arr_0']
     else:
         raise ValueError('flatfield problem')
     flatfield = flatfield[roi[2]:roi[3], roi[4]:roi[5]]
     data_corrected = data*flatfield[None]
+        
+    # Take nan's into account
+    data_corrected[np.isnan(data_corrected)] = 0
     
     if plot:
         plt.figure(figsize=(8,8))
@@ -512,6 +534,11 @@ def correct_flatfield(data, roi,
 
 def compute_oversampling_ratio(support,
                                plot=False):
+    
+    '''
+    Compute the oversampling ratio from the real space support.
+    :support: real space support
+    '''
         
     indices_support = np.where(support==1)
     size_per_dim = np.max(indices_support,axis=1) - np.min(indices_support,axis=1)
@@ -530,6 +557,14 @@ def compute_oversampling_ratio(support,
 def oversampling_from_diffraction(data,
                                   support_threshold=.1,
                                   plot=False, verbose = True):
+    '''
+    Compute a guess of the oversampling ratio from the object auto-correlation (FT of the diffraction data).
+    This way, you can have a guess of the possible rebinning before making any reconstruction.
+    This works well for low strain data but not for high-strained particle.
+    In practice, rebin for low-strain but not for high-strain (EB rule of thumb)
+    :data: diffraction data
+    :support_threshold: auto-correlation support threshold. Leave it to .1 like in pynx
+    '''
     obj_autocor = np.abs(ifftshift(fftn(fftshift(data))))
     support_autocor = (obj_autocor > support_threshold * np.max(obj_autocor))
     
@@ -562,18 +597,23 @@ def oversampling_from_diffraction(data,
 def load_mask(scan,
               data, roi=None,
               plot=False):
-    path_mask = '/data/id01/inhouse/bellec/software/sharedipynb/gitlab/bcdi_eb/saved_masks/'
-    path_mask_array = path_mask+'mask_{}.npy'.format(scan.detector)
-    if os.path.isfile(path_mask_array):
-        mask2d = np.load(path_mask_array)
-    else:
-        mask2d = np.zeros(scan.detector_shape)
-        
-    if roi is not None:
-        mask2d = mask2d[roi[0]:roi[1],roi[2]:roi[3]]
+    if scan.mask is not None: # PETRA data
+        mask = np.zeros(data.shape)
+        mask += scan.mask[None,:,:]
     
-    mask = np.zeros(data.shape)
-    mask += mask2d[None]
+    else:
+        path_mask = '/data/id01/inhouse/bellec/software/sharedipynb/gitlab/bcdi_eb/saved_masks/'
+        path_mask_array = path_mask+'mask_{}.npy'.format(scan.detector)
+        if os.path.isfile(path_mask_array):
+            mask2d = np.load(path_mask_array)
+        else:
+            mask2d = np.zeros(scan.detector_shape)
+
+        if roi is not None:
+            mask2d = mask2d[roi[0]:roi[1],roi[2]:roi[3]]
+
+        mask = np.zeros(data.shape)
+        mask += mask2d[None]
     
     if plot :
         fig, ax = plt.subplots(1,3, figsize=(14,6))

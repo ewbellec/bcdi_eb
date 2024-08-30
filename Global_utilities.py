@@ -77,6 +77,7 @@ def center_of_mass_calculation_two_steps(data,
     return center
 
 def center_the_center_of_mass(data,
+                              qx=None,qy=None,qz=None,
                               standard_com=False,
                               plot=False, vmin=None,
                               return_offsets=False,
@@ -100,18 +101,28 @@ def center_the_center_of_mass(data,
     offset = [int(np.rint(shape[n] / 2.0 - com[n])) for n in range(len(shape)) ]
 
     # Put back the center of mass to the middle of the matrix
-    data_cen = np.roll(data, offset, axis=range(len(shape)))    
+    data_cen = np.roll(data, offset, axis=range(len(shape)))  
+    if qx is not None:
+        qx = np.roll(qx, offset, axis=range(len(shape)))  
+        qy = np.roll(qy, offset, axis=range(len(shape)))  
+        qz = np.roll(qz, offset, axis=range(len(shape)))  
     if plot:
         if len(shape)==2:
             fig,ax = plt.subplots(1,2, figsize=(8,4))
             ax[0].imshow(data, cmap=cmap, vmin=vmin, norm=norm)
             ax[0].scatter(com[1],com[0], c=scatter_color, s=scatter_size)
             ax[1].imshow(data_cen, cmap=cmap, vmin=vmin, norm=norm)
+#         if len(shape)==3:
+#             plot_3D_projections(data, fig_title='original data')
+#             plot_3D_projections(data_cen, fig_title='centered data')
     
     if return_offsets:
         return data_cen, offset
     else:
-        return data_cen
+        if qx is not None:
+            return data_cen, qx, qy, qz
+        else:
+            return data_cen
     
 
 def interpolation_xrayutilities_gridder(x,y,z, data, 
@@ -170,6 +181,10 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 def add_colorbar_subplot(fig,axes,imgs,
                          size='5%',
                          return_cbar = False):
+    if not type(imgs)==list:
+        imgs = [imgs]
+        axes = [axes] 
+    
     cbar_list = []
     for im, ax in zip(imgs,np.array(axes).flatten()):
         divider = make_axes_locatable(ax)
@@ -257,3 +272,9 @@ def rotation_matrix_from_vectors(vec1, vec2):
     kmat = np.array([[0, -v[2], v[1]], [v[2], 0, -v[0]], [-v[1], v[0], 0]])
     rotation_matrix = np.eye(3) + kmat + kmat.dot(kmat) * ((1 - c) / (s ** 2))
     return rotation_matrix
+
+def create_radius_array(array):
+    r = np.indices(array.shape)
+    r = r - np.mean(r,axis=tuple(range(1,array.ndim+1)))[:,None,None]
+    r = np.sqrt(np.sum(r**2., axis=0))
+    return r

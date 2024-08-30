@@ -105,6 +105,7 @@ def plot_subplot_colorbar(array,
 
 from matplotlib.colors import LogNorm
 def plot_3D_projections(data,
+                        mask=None, alpha_mask=.3,
                       ax=None, fig=None, fw=4,
                         fig_title=None, axes_labels=False, colorbar=False,
                         log_scale=True,
@@ -136,7 +137,13 @@ def plot_3D_projections(data,
                 plots.append(ax[n].matshow(img,cmap=cmap, aspect='auto', norm=LogNorm(vmin=vmin,vmax=vmax)))
         else:
             plots.append(ax[n].matshow(img,cmap=cmap, aspect='auto', vmin=vmin,vmax=vmax))
-    
+            
+        if mask is not None :
+            mask_plot = np.nanmean(mask, axis=n)
+            mask_plot[mask_plot != 0.] = 1.
+            ax[n].imshow( np.dstack([mask_plot, np.zeros(mask_plot.shape),
+                                     np.zeros(mask_plot.shape), alpha_mask*mask_plot]), aspect='auto')
+            
     if axes_labels:
         ax[0].set_xlabel('detector horizontal', fontsize=15*fw/4)
         ax[0].set_ylabel('detector vertical', fontsize=15*fw/4)
@@ -206,7 +213,7 @@ def plot_2D_slices_middle_one_array3D(array,
                                       index=None,
                                       voxel_sizes=None, # voxel size in Angstrom
                                       add_colorbar=True, cbar_position='right', cbar_label=None,
-                                 cmap='gray_r',
+                                 cmap='gray_r', norm=None,
                                  ax=None, fig=None,
                                  fw=3,
                                  fig_title = None, 
@@ -245,11 +252,11 @@ def plot_2D_slices_middle_one_array3D(array,
         if hasattr(alpha, "__len__"):
             alpha_plot = np.copy(alpha[tuple(s)])
             # Need to make the plot twice to avoid a matplotlib bug
-            im.append(ax[n].imshow(arr, cmap=cmap, vmin=vmin,vmax=vmax, extent=extent[n]))
+            im.append(ax[n].imshow(arr, cmap=cmap, vmin=vmin,vmax=vmax, extent=extent[n], norm=norm))
             ax[n].cla()
-            ax[n].imshow(arr, cmap=cmap, alpha=alpha_plot, vmin=vmin,vmax=vmax, extent=extent[n])
+            ax[n].imshow(arr, cmap=cmap, alpha=alpha_plot, vmin=vmin,vmax=vmax, extent=extent[n], norm=norm)
         else:
-            im.append(ax[n].imshow(arr, cmap=cmap, alpha=alpha, vmin=vmin,vmax=vmax, extent=extent[n]))
+            im.append(ax[n].imshow(arr, cmap=cmap, alpha=alpha, vmin=vmin,vmax=vmax, extent=extent[n], norm=norm))
     
 
     if add_colorbar:
@@ -278,7 +285,7 @@ def plot_2D_slices_middle_one_array3D(array,
     return
 
 def plot_2D_slices_middle_only_module(obj,
-                                      crop=True,
+                                      crop=False,
                                       voxel_sizes=None,
                                       cmap='gray_r', vmin=None,vmax=None,
                                   ax=None, fig=None, fw=3,
@@ -291,7 +298,7 @@ def plot_2D_slices_middle_only_module(obj,
     return
 
 def plot_2D_slices_middle_only_phase(obj,
-                                     crop=True,
+                                     crop=False,
                                      threshold_module = None, support = None,
                                      voxel_sizes=None,
                                      cmap='hsv', vmin=None,vmax=None,
@@ -307,7 +314,7 @@ def plot_2D_slices_middle_only_phase(obj,
     return
 
 def plot_2D_slices_middle(obj,
-                          crop=True,
+                          crop=False,
                           support=None, threshold_module=None, unwrap=True,
                           voxel_sizes=None,
                           ax=None, fig=None, fw=3,
@@ -343,7 +350,7 @@ def plot_2D_slices_middle(obj,
         return
 
 def plot_2D_slices_middle_object_list(obj_list, llk_list=None,
-                                      crop=True,
+                                      crop=False,
                                  fw=3):
     nb_obj = len(obj_list)
     
@@ -363,7 +370,7 @@ def plot_2D_slices_middle_object_list(obj_list, llk_list=None,
     return 
 
 def plot_2D_slices_middle_and_histogram(obj,
-                                        crop=True,
+                                        crop=False,
                                         support=None, threshold_module=None, unwrap=True,
                                         ax=None, fig=None, fw=3,
                                         fig_title=None,
@@ -388,7 +395,7 @@ def plot_2D_slices_middle_and_histogram(obj,
         return
     
 def plot_2D_slices_middle_only_module_and_histogram(obj,
-                                                    crop=True,
+                                                    crop=False,
                                                     ax=None, fig=None, fw=3,
                                                     fig_title=None,
                                                     return_fig_ax=False):
@@ -534,6 +541,30 @@ def compare_reconstuction_to_real_data(data, obj):
 
 
 ######################################################################################################################################
+###############################           Support projection for ROI selection              ##########################################
+###################################################################################################################################### 
+
+def plot_support_projection(obj,
+                            threshold_module=.3,
+                           fw=3):
+    module = np.abs(obj)
+    support = module > threshold_module * np.max(module)
+
+    if obj.ndim == 3:
+        xlabels = ['axis 2', 'axis 2', 'axis 1']
+        ylabels = ['axis 1', 'axis 0', 'axis 0']
+
+    fig,ax = plt.subplots(1,obj.ndim, figsize=(fw * obj.ndim, fw))
+    for axis in range(obj.ndim):
+        projection = np.max(support, axis=axis)
+        ax[axis].matshow(projection, cmap='gray_r', aspect='auto')
+        ax[axis].set_xlabel(xlabels[axis], fontsize=15*fw/3.)
+        ax[axis].set_ylabel(ylabels[axis], fontsize=15*fw/3.)
+        ax[axis].set_title(f'projection along axis {axis}', fontsize=12*fw/3.)
+    fig.tight_layout()
+    return
+
+######################################################################################################################################
 ################################                  Final pretty figure                     ############################################
 ###################################################################################################################################### 
 
@@ -633,12 +664,15 @@ def final_figure_version2(module_ortho, phase_ortho, strain,#d_spacing,
     
 def final_figure_version3(module_ortho, phase_ortho, strain, d_spacing,
                           voxel_sizes=None,
-                          threshold=.1, factor=.2,
+                          make_roi=True, threshold=.1, factor=.2,
                           fw=2.7, fig_title=None,
                           return_figure=False):
     fig,ax = plt.subplots(3,4,figsize=(fw*4, fw*3))
 
-    roi = automatic_object_roi(module_ortho, threshold=threshold, factor=factor)
+    if make_roi:
+        roi = automatic_object_roi(module_ortho, threshold=threshold, factor=factor)
+    else:
+        roi = [None,None,None,None,None,None]
     xlabel = ['Z (nm)', 'Z (nm)', 'Y (nm)']
     ylabel = ['Y', 'X', 'X']
 
@@ -682,6 +716,77 @@ def final_figure_version3(module_ortho, phase_ortho, strain, d_spacing,
         return fig,ax
     else:
         return
+    
+    
+def final_figure_version4(module_ortho, phase_ortho, strain, d_spacing,
+                          tilt_magn,
+                          voxel_sizes=None,
+                          make_roi=True, threshold=.1, factor=.2,
+                          fw=2.7, fig_title=None,
+                          return_figure=False):
+    fig,ax = plt.subplots(3,5,figsize=(fw*5, fw*3))
+
+    if make_roi:
+        roi = automatic_object_roi(module_ortho, threshold=threshold, factor=factor)
+    else:
+        roi = [None,None,None,None,None,None]
+    xlabel = ['Z (nm)', 'Z (nm)', 'Y (nm)']
+    ylabel = ['Y', 'X', 'X']
+
+    plot_2D_slices_middle_one_array3D(apply_roi(module_ortho, roi),
+                                      cmap='gray_r', voxel_sizes=voxel_sizes, add_colorbar=True,
+                                      xlabel=xlabel, ylabel=ylabel,
+                                      fig=fig,ax=ax[:,0])
+
+    plot_2D_slices_middle_one_array3D(apply_roi(phase_ortho, roi),
+                                      cmap='hsv', voxel_sizes=voxel_sizes, add_colorbar=True,
+                                      fig=fig,ax=ax[:,1])
+    
+    plot_2D_slices_middle_one_array3D(1e2*apply_roi(tilt_magn, roi),
+                                      cmap='gray_r', voxel_sizes=voxel_sizes, add_colorbar=True,
+                                      fig=fig,ax=ax[:,2])
+
+    plot_2D_slices_middle_one_array3D(1e2*apply_roi(strain, roi),
+                                      cmap='coolwarm', voxel_sizes=voxel_sizes, add_colorbar=True,cbar_position='right',
+                                      fig=fig,ax=ax[:,3])
+    
+    plot_2D_slices_middle_one_array3D(apply_roi(d_spacing, roi),
+                                      cmap='coolwarm', voxel_sizes=voxel_sizes, add_colorbar=True, cbar_position='left',
+                                      cbar_label=r'd spacing ($\AA$)',
+                                      fig=fig,ax=ax[:,4])
+
+    ax[0,0].set_title('module', fontsize=20*fw/3)
+    ax[0,1].set_title('phase', fontsize=20*fw/3)
+    ax[0,2].set_title('tilt magnitude (%)', fontsize=20*fw/3)
+    ax[0,3].set_title('strain (%)', fontsize=20*fw/3)
+    ax[0,4].set_title(r'd-spacing ($\AA$)', fontsize=20*fw/3)
+    
+    for axe in ax.flatten():
+        axe.tick_params(axis='both', which='major', labelsize=15*fw/4)
+        axe.xaxis.get_label().set_fontsize(20*fw/3)
+        axe.yaxis.get_label().set_fontsize(20*fw/3)
+       
+    if fig_title is not None:
+        fig.suptitle(fig_title, fontsize=15)
+
+    fig.tight_layout()
+    
+    for n in range(3):
+        fig.delaxes(ax[n,4])
+    
+    if return_figure:
+        return fig,ax
+    else:
+        return
+    
+    
+    
+def plot_strain_histo(strain):
+    fig,ax = plt.subplots(1,1,figsize=(4,4))
+    _ = ax.hist(1e2*strain.flatten(), bins=50)
+    ax.set_xlabel('strain (%)', fontsize=15)
+    ax.set_title('strain histogram', fontsize=20)
+    return
     
 ######################################################################################################################################
 ############################                  Bragg planes schematic figure                  #########################################

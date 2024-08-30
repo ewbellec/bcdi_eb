@@ -29,7 +29,10 @@ def load_reconstructions(path_reconstruction):
             try:
                 data = np.load(file)
                 obj_list.append(data['obj'])
-                llk_list.append(data['llk'])
+                try:
+                    llk_list.append(data['llk'])
+                except : 
+                    llk_list.append(0)
                 file_list.append(file)
             except:
                 print('failed to load {}'.format(file))
@@ -218,11 +221,13 @@ def automatic_conj_index_finding(file_list, index_best_recon,
     conj_index = [conj_index_start]
     obj_ref = np.load(file_list[index_best_recon[0]])['obj']
     if conj_index_start==1:
-        obj_ref = np.conj(obj_ref[::-1,::-1,::-1])
+#         obj_ref = np.conj(obj_ref[::-1,::-1,::-1])
+        obj_ref = np.conj(np.flip(obj_ref,axis=range(obj_ref.ndim)))
 
     for n in range(1,len(index_best_recon)):
         obj2 = np.load(file_list[index_best_recon[n]])['obj']
-        obj2_conj = np.conj(obj2[::-1,::-1,::-1])
+#         obj2_conj = np.conj(obj2[::-1,::-1,::-1])
+        obj2_conj = np.conj(np.flip(obj2,axis=range(obj2.ndim)))
         mode1 = []
         
         conjugate=0
@@ -290,18 +295,45 @@ def linear_fit(array):
     
     return reg 
 
+def remove_phase_linear_fit(phase):
+    reg = linear_fit(phase)
+    pos = np.indices(phase.shape)
+#     ramp = np.sum([reg.coef_[n]*pos[-n] for n in range(len(pos))], axis=0) + reg.intercept_
+#     ramp = -ramp
+    ramp = np.sum([reg.coef_[n]*pos[+n] for n in range(len(pos))], axis=0) + reg.intercept_
+    return ramp
+
+def remove_phase_ramp_gradient_average(phase):
+    # Get the slope
+    grad = np.array(np.gradient(phase))#EB_custom_gradient(phase)
+    slope = np.nanmean(grad, axis=(1,2,3))
+    
+    pos = np.indices(phase.shape).astype('float64')
+    ramp = np.sum(pos * slope[:,None,None,None], axis=0)    
+    return ramp
+
 def remove_phase_ramp(obj,
-                      threshold_module=None,
-                      crop=True,
+                      threshold_module=.3,
+                      crop=False,
                       return_ramp=False,
+                      method='fit', # 'gradient'
                       plot=False):
     
     module, phase = get_cropped_module_phase(obj, crop=crop, unwrap=True, threshold_module=threshold_module)
-    reg = linear_fit(phase)
     
-    pos = np.indices(obj.shape)
-    ramp = np.sum([reg.coef_[n]*pos[-n] for n in range(len(pos))], axis=0) + reg.intercept_
-    obj_no_ramp = np.abs(obj)*np.exp(1.0j*(np.angle(obj)-ramp))
+    if method=='fit':
+        ramp = remove_phase_linear_fit(phase)
+    elif method=='gradient':
+        ramp = remove_phase_ramp_gradient_average(phase)
+    else:
+        raise ValueError('no ramp computation method given')
+        
+    _, phase_full = get_cropped_module_phase(obj, crop=crop, unwrap=True, threshold_module=0.)
+    phase_no_ramp = phase_full - ramp
+    phase_no_ramp -= np.nanmean(phase_no_ramp) # Just remove a phase constant
+    
+
+    obj_no_ramp = np.abs(obj)*np.exp(1.0j*phase_no_ramp)
     
     if plot:
         
@@ -520,7 +552,8 @@ def combine_reconstructions(file_list, index_best_recon,
     else:
         for n in range(len(obj_list)):
             if conj_index[n] ==1 :
-                obj_list[n] = np.conj(obj_list[n][::-1,::-1,::-1])
+#                 obj_list[n] = np.conj(obj_list[n][::-1,::-1,::-1])
+                obj_list[n] = np.conj(np.flip(obj_list[n],axis=range(obj_list[n].ndim)))
                 
     # center again all objects (just to feel safe)
     obj_list = center_object_list(obj_list)
@@ -550,7 +583,10 @@ def combine_reconstructions(file_list, index_best_recon,
         
         
     if plot_result or plot:
-        plot_2D_slices_middle(obj, threshold_module=.3)
+        if obj.ndim==3:
+            plot_2D_slices_middle(obj, threshold_module=.3)
+        elif obj.ndim==2:
+            plot_object_module_phase_2d(obj)
     
     return obj, file_ref, weights
 

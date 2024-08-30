@@ -241,10 +241,10 @@ def compute_tilt(grad, qcen,
                                              voxel_sizes=voxel_sizes)
             plot_2D_slices_middle_one_array3D(tilt_angle, cmap='coolwarm', fig_title='tilt angle (degrees)',
                                              voxel_sizes=voxel_sizes)
-            plot_2D_slices_middle_one_array3D(tilt_angle, cmap='coolwarm'
-                                              , alpha=tilt_magn/np.nanmax(tilt_magn), 
-                                              fig_title='tilt angle (degrees) with magnitude transparency',
-                                             voxel_sizes=voxel_sizes)
+#             plot_2D_slices_middle_one_array3D(tilt_angle, cmap='coolwarm'
+#                                               , alpha=tilt_magn/np.nanmax(tilt_magn), 
+#                                               fig_title='tilt angle (degrees) with magnitude transparency',
+#                                              voxel_sizes=voxel_sizes)
         return tilt_comp1, tilt_comp2, tilt_magn, tilt_angle, e1, e2
     else:
         return tilt_comp1, tilt_comp2, e1, e2

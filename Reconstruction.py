@@ -1,7 +1,6 @@
 import numpy as np
 import pylab as plt
 from numpy.fft import ifftn, fftn, fftshift, ifftshift
-
 from pynx.cdi import * # Might take a bit of time to import
 
 from Plot_utilities import *
@@ -9,6 +8,20 @@ from Global_utilities import *
 from Object_utilities import *
 
 my_cmap = MIR_Colormap()
+
+
+######################################################################################################################################
+################################                      Dummy file_dict                       ##########################################
+######################################################################################################################################
+
+def dummy_file_dict(savename='dummy'):
+    file_dict = {}
+    file_dict['orthogonalization'] = False
+    file_dict['h5file'] = savename
+    file_dict['scan_nb'] = 0
+    file_dict['savename_add_string'] = ''
+    file_dict['sample'] = 'dummy'
+    return file_dict
 
 ######################################################################################################################################
 ################################            Load preprocessed diffraction data              ##########################################
@@ -107,13 +120,15 @@ def default_cdi_parameters():
     params['return_cdi'] = False
 
     params['compute_free_llk'] = True
-    params['calc_llk'] = 100 # Don't calculate llk all the time
+    params['calc_llk'] = None # Don't calculate llk all the time
     
     return params
 
 import warnings
 def CDI_one_reconstruction(data, params,
                            plot_result=True):
+
+
     '''
     :support_init: 'gauss_conv' or 'autocorrelation'. gauss_conv only works if the obj_init_list is given
     :obj_init: careful, should not be fftshifted
@@ -125,6 +140,8 @@ def CDI_one_reconstruction(data, params,
               
     if params['center_data']:
         data, centering_offsets = center_the_center_of_mass(data, return_offsets=True)
+        if params['mask'] is not None:
+            params['mask'] = np.roll(params['mask'], centering_offsets, axis=range(len(params['mask'].shape)))  
         print('centering_offsets : ', centering_offsets)
     
     if type(params['support_init']) == np.ndarray:
@@ -197,17 +214,34 @@ def CDI_one_reconstruction(data, params,
         method = algo.split('_')[0]
         iterations = int(algo.split('_')[1])
         
-        if method == 'HIO':
-            cdi = (sup * HIO(beta=0.9, calc_llk=params['calc_llk'], show_cdi=params['show_cdi'], update_psf=params['update_psf'])**params['support_update'])**(iterations//params['support_update'])* cdi 
-        if method == 'DetwinHIO':
-            cdi = DetwinHIO(beta=0.9)**iterations * cdi 
-        if method == 'RAAR' :
-            cdi = (sup * RAAR(beta=0.9, calc_llk=params['calc_llk'], show_cdi=params['show_cdi'], update_psf=params['update_psf'])**params['support_update'])**(iterations//params['support_update'])* cdi
-        if method == 'DetwinRAAR':
-            cdi = DetwinRAAR(beta=0.9)**iterations * cdi 
-        if method == 'ER' :
-            cdi = (sup * ER(calc_llk=params['calc_llk'], show_cdi=params['show_cdi'], update_psf=params['update_psf']) ** params['support_update'])**(iterations//params['support_update']) *cdi
+        if params['support_update']==False or params['support_update']==None:
+            if method == 'HIO':
+                cdi =  HIO(beta=0.9, calc_llk=params['calc_llk'], show_cdi=params['show_cdi'],
+                           update_psf=params['update_psf'])**iterations* cdi 
+            if method == 'DetwinHIO':
+                cdi = DetwinHIO(beta=0.9)**iterations * cdi 
+            if method == 'RAAR' :
+                cdi = RAAR(beta=0.9, calc_llk=params['calc_llk'], show_cdi=params['show_cdi'],
+                           update_psf=params['update_psf'])**iterations* cdi
+            if method == 'DetwinRAAR':
+                cdi = DetwinRAAR(beta=0.9)**iterations * cdi 
+            if method == 'ER' :
+                cdi = ER(calc_llk=params['calc_llk'], show_cdi=params['show_cdi'],
+                         update_psf=params['update_psf']) **iterations *cdi
 
+        else:   
+            if method == 'HIO':
+                cdi = (sup * HIO(beta=0.9, calc_llk=params['calc_llk'], show_cdi=params['show_cdi'], update_psf=params['update_psf'])**params['support_update'])**(iterations//params['support_update'])* cdi 
+            if method == 'DetwinHIO':
+                cdi = DetwinHIO(beta=0.9)**iterations * cdi 
+            if method == 'RAAR' :
+                cdi = (sup * RAAR(beta=0.9, calc_llk=params['calc_llk'], show_cdi=params['show_cdi'], update_psf=params['update_psf'])**params['support_update'])**(iterations//params['support_update'])* cdi
+            if method == 'DetwinRAAR':
+                cdi = DetwinRAAR(beta=0.9)**iterations * cdi 
+            if method == 'ER' :
+                cdi = (sup * ER(calc_llk=params['calc_llk'], show_cdi=params['show_cdi'], update_psf=params['update_psf']) ** params['support_update'])**(iterations//params['support_update']) *cdi
+
+            
 #    # Reconstruction algortihm
 #     support_update = 20
 #     update_psf = 20

@@ -48,6 +48,9 @@ def crop_scale_function(data,
         
     if data_centering:
         data, centering_offsets = center_the_center_of_mass(data, return_offsets=True)
+        if mask is not None:
+            mask = np.roll(mask, centering_offsets, axis=range(len(mask.shape)))  
+        print('centering_offsets : ', centering_offsets)
         
     # Sorry but I need to force some parameters
     params['center_data'] = False # necessary
@@ -152,13 +155,7 @@ def save_reconstruction_crop_algo(file_dict, obj, llk, support, n_reconstruction
     return
 
 
-def dummy_file_dict(savename='dummy'):
-    file_dict = {}
-    file_dict['orthogonalization'] = False
-    file_dict['h5file'] = savename
-    file_dict['scan_nb'] = 0
-    file_dict['savename_add_string'] = ''
-    return file_dict
+
 
 def make_several_reconstructions_crop_algo(data, file_dict, Nb_reconstruction, 
                                            crop_factor_list,

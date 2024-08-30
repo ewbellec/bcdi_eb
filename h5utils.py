@@ -152,7 +152,11 @@ class Scan:
         except:
             pass
 
-        self.getDetectorName()
+        try:
+            self.getDetectorName()
+        except:
+            if self.verbose:
+                print('detector name not found. Give it.')
         
         try:
             self.getDetectorShape()
@@ -249,17 +253,24 @@ class Scan:
 
     def getEnergy(self):
         with h5.File(self.h5file, "r") as h5f:
-            energy = (
-                12.39842
-                / (
-                    h5f[
-                        "{}/instrument/monochromator/WaveLength".format(
-                            self.scan_string
-                        )
-                    ][()]
-                    * 1e10
-                )
-            ) * 1e3  # energy in eV
+            try:
+                energy = (
+                    12.39842
+                    / (
+                        h5f[
+                            "{}/instrument/monochromator/WaveLength".format(
+                                self.scan_string
+                            )
+                        ][()]
+                        * 1e10
+                    )
+                ) * 1e3  # energy in eV
+            except:
+                energy = h5f[
+                    "{}/instrument/positioners/mononrj".format(
+                        self.scan_string
+                    )
+                ][()]*1e3
         self.energy = energy
         return energy
 
@@ -364,11 +375,15 @@ class Scan:
         #         self.data = data # might not be a good idea to save it in scan object if we return it as well
         return data
     
-    def getStartTime(self, return_seconds=False):
+    def getStartEndTime(self, return_seconds=False):
         with h5.File(self.h5file) as h5f:
             start_time = h5f[self.scan_string]['start_time'][()]
             start_time = start_time.decode("utf-8")
+            
+            end_time = h5f[self.scan_string]['end_time'][()]
+            end_time = end_time.decode("utf-8")
 
+        
         year = int(start_time.split("-")[0])
         month = int(start_time.split("-")[1])
         day = int(start_time.split("-")[2].split("T")[0])
@@ -386,11 +401,29 @@ class Scan:
         )
 
         start_time = datetime(year, month, day, hour, minutes, seconds, microseconds)
+        
+        year = int(end_time.split("-")[0])
+        month = int(end_time.split("-")[1])
+        day = int(end_time.split("-")[2].split("T")[0])
+        hour = int(end_time.split("-")[2].split("T")[1].split(":")[0])
+        minutes = int(end_time.split("-")[2].split("T")[1].split(":")[1])
+        seconds = int(
+            end_time.split("-")[2].split("T")[1].split(":")[2].split(".")[0]
+        )
+        microseconds = int(
+            end_time.split("-")[2]
+            .split("T")[1]
+            .split(":")[2]
+            .split(".")[1]
+            .split("+")[0]
+        )
+
+        end_time = datetime(year, month, day, hour, minutes, seconds, microseconds)
 
         if return_seconds:
-            return start_time.timestamp()
+            return start_time.timestamp(), end_time.timestamp()
         else:
-            return start_time
+            return start_time, end_time
 
     def getTimeEachPoints(self, return_seconds=False):
         if "SXDM_Scan" in str(type(self)):
@@ -556,12 +589,20 @@ class SXDM_Scan(Scan):
         motor2_name = self.command.split()[5].replace(',','')#[:-1]
 
         with h5.File(self.h5file, "r") as h5f:
-            motor1 = h5f[self.scan_string][
-                "instrument/{}_position/value".format(motor1_name)
-            ][()]
-            motor2 = h5f[self.scan_string][
-                "instrument/{}_position/value".format(motor2_name)
-            ][()]
+            try:
+                motor1 = h5f[self.scan_string][
+                    "instrument/{}_position/value".format(motor1_name)
+                ][()]
+                motor2 = h5f[self.scan_string][
+                    "instrument/{}_position/value".format(motor2_name)
+                ][()]
+            except:
+                motor1 = h5f[self.scan_string][
+                    "instrument/{}/value".format(motor1_name)
+                ][()]
+                motor2 = h5f[self.scan_string][
+                    "instrument/{}/value".format(motor2_name)
+                ][()]
 
         # Reshape the motor positions into 2D arrays
         dim1 = int(self.command.split()[8].replace(',',''))#[:-1])
@@ -621,7 +662,7 @@ class SXDM_3D_Scan:
         self.verbose = verbose
         self.detector = self.scan1.detector
 
-        self.nb_scan = len(get_scans_title_str_hdf5(filename, "", verbose=False))
+        self.nb_scan = len(np.unique(get_scans_title_str_hdf5(filename, "", verbose=False)))
 
         if motor3_name is None:
             self.motor3_name = self.FindThirdMotor()

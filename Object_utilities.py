@@ -92,7 +92,7 @@ def center_object_list(obj_list):
 
 def get_cropped_module_phase(obj,
                              threshold_module = None, support = None,
-                             crop=True, apply_fftshift=False, unwrap=True):
+                             crop=False, apply_fftshift=False, unwrap=True):
     
     if apply_fftshift:
         obj = fftshift(obj)
@@ -108,7 +108,7 @@ def get_cropped_module_phase(obj,
     if support is None:
         if threshold_module is None:
             if obj.ndim ==3:
-                threshold_module=.01 # Seems that 3D data need a smaller threshold
+                threshold_module = .3 # Seems that 3D data need a smaller threshold. Nope in the end, .3 is fine
             if obj.ndim == 2:
                 threshold_module = .3
         support = (module >= np.nanmax(module)*threshold_module)        
@@ -130,7 +130,7 @@ def get_cropped_module_phase(obj,
         phase = unwrap_phase_skimage(
                 phase,
                 wrap_around=False,
-                seed=1
+#                 seed=1
             ).data
 
 #     if unwrap:
@@ -194,6 +194,38 @@ def automatic_object_roi(obj,
             ax[n].axvline(x=end, color='r')
             
     return roi
+
+# def automatic_object_roi(obj,
+#                          threshold = .1, factor = .05,
+#                          plot=False):
+    
+#     module = np.abs(obj)
+#     support = module > .1*np.max(module)
+#     indices_support = np.where(support==1)
+#     center = np.round(center_of_mass(support)).astype('int')
+    
+#     roi = np.zeros(2*module.ndim, dtype='int')
+#     for axis in range(module.ndim):
+
+#         start = np.nanmin(indices_support[axis])
+#         end = np.nanmax(indices_support[axis])
+
+#         size = end-start
+#         start = max(round(start - factor * size), 0)
+#         end = min(round(end + factor * size), module.shape[axis]-1)
+#         start = max(int(start-size*factor),0)
+#         end = int(end+size*factor)
+
+#         roi[2*axis] += start
+#         roi[2*axis+1] += end
+
+#         # center roi by increasing side if necessary
+#         difference = [center[axis] - roi[2*axis], roi[2*axis+1] - center[axis]]
+#         shift = max(difference) - min(difference)
+#         index_shift = np.argmin(difference)
+#         roi[2*axis+index_shift] += shift * (2*index_shift-1)
+            
+#     return roi
 
 
 ######################################################################################################################################
